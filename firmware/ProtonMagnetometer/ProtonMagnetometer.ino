@@ -25,6 +25,18 @@ enum class MeasurementPhase {
   RECYCLE,
 };
 
+enum class FaultCode {
+  NONE,
+  INVALID_SETTINGS,
+  INVALID_PHASE,
+  MISSING_SIGNAL,
+  INSUFFICIENT_SAMPLES,
+  FREQUENCY_OUT_OF_RANGE,
+  UNSTABLE_SIGNAL,
+  COLLECTION_TIMEOUT,
+  HARDWARE_INTERFACE,
+};
+
 struct MeasurementSettings {
   uint32_t polarizationMs;
   uint32_t settleMs;
@@ -66,7 +78,8 @@ ControllerState state = ControllerState::IDLE;
 MeasurementPhase phase = MeasurementPhase::NONE;
 uint32_t measurementNumber = 0;
 uint32_t phaseStartedAtMs = 0;
-const char *lastFault = "NONE";
+FaultCode lastFault = FaultCode::NONE;
+FaultCode injectedFault = FaultCode::NONE;
 char commandBuffer[COMMAND_BUFFER_SIZE];
 size_t commandLength = 0;
 bool commandOverflow = false;
@@ -97,6 +110,30 @@ const char *phaseName(MeasurementPhase value) {
       return "ACQUIRE";
     case MeasurementPhase::RECYCLE:
       return "RECYCLE";
+  }
+  return "UNKNOWN";
+}
+
+const char *faultName(FaultCode value) {
+  switch (value) {
+    case FaultCode::NONE:
+      return "NONE";
+    case FaultCode::INVALID_SETTINGS:
+      return "INVALID_SETTINGS";
+    case FaultCode::INVALID_PHASE:
+      return "INVALID_PHASE";
+    case FaultCode::MISSING_SIGNAL:
+      return "MISSING_SIGNAL";
+    case FaultCode::INSUFFICIENT_SAMPLES:
+      return "INSUFFICIENT_SAMPLES";
+    case FaultCode::FREQUENCY_OUT_OF_RANGE:
+      return "FREQUENCY_OUT_OF_RANGE";
+    case FaultCode::UNSTABLE_SIGNAL:
+      return "UNSTABLE_SIGNAL";
+    case FaultCode::COLLECTION_TIMEOUT:
+      return "COLLECTION_TIMEOUT";
+    case FaultCode::HARDWARE_INTERFACE:
+      return "HARDWARE_INTERFACE";
   }
   return "UNKNOWN";
 }
@@ -173,9 +210,11 @@ void printStatus() {
   Serial.print(F(" phase="));
   Serial.print(phaseName(phase));
   Serial.print(F(" fault="));
-  Serial.print(lastFault);
+  Serial.print(faultName(lastFault));
   printSettings();
   printTestSignal();
+  Serial.print(F(" test_fault="));
+  Serial.print(faultName(injectedFault));
   Serial.println();
 }
 
@@ -221,7 +260,7 @@ void acquireTestSignal() {
       PROTON_MILLIHZ_PER_NT_X1E6);
 }
 
-void printResult() {
+void printResult(FaultCode fault) {
   Serial.print(F("RESULT measurement="));
   Serial.print(measurementNumber);
   Serial.print(F(" frequency_millihz="));
@@ -232,7 +271,52 @@ void printResult() {
   Serial.print(result.frequencySamples);
   Serial.print(F(" spread_millihz="));
   Serial.print(result.frequencySpreadMilliHz);
-  Serial.println(F(" quality=UNCHECKED"));
+  Serial.print(F(" quality="));
+  Serial.print(fault == FaultCode::NONE ? F("VALID") : F("INVALID"));
+  Serial.print(F(" reason="));
+  Serial.println(faultName(fault));
+}
+
+FaultCode validateResult() {
+  if (injectedFault != FaultCode::NONE) {
+    return injectedFault;
+  }
+  if (!result.available) {
+    return FaultCode::MISSING_SIGNAL;
+  }
+  if (result.frequencySamples < settings.minFrequencySamples) {
+    return FaultCode::INSUFFICIENT_SAMPLES;
+  }
+
+  const uint64_t minimumMilliHz =
+      static_cast<uint64_t>(settings.minFrequencyHz) * 1000ULL;
+  const uint64_t maximumMilliHz =
+      static_cast<uint64_t>(settings.maxFrequencyHz) * 1000ULL;
+  if (result.frequencyMilliHz < minimumMilliHz ||
+      result.frequencyMilliHz > maximumMilliHz) {
+    return FaultCode::FREQUENCY_OUT_OF_RANGE;
+  }
+  if (result.frequencySpreadMilliHz >
+      static_cast<uint64_t>(settings.maxFrequencySpreadHz) * 1000ULL) {
+    return FaultCode::UNSTABLE_SIGNAL;
+  }
+  return FaultCode::NONE;
+}
+
+void recoverFromFault(FaultCode fault) {
+  state = ControllerState::FAULT;
+  phase = MeasurementPhase::NONE;
+  lastFault = fault;
+  Serial.print(F("FAULT measurement="));
+  Serial.print(measurementNumber);
+  Serial.print(F(" reason="));
+  Serial.println(faultName(fault));
+
+  // Coil shutdown will be added here when its hardware interface is defined.
+  state = ControllerState::IDLE;
+  Serial.print(F("RECOVERED measurement="));
+  Serial.print(measurementNumber);
+  Serial.println(F(" state=IDLE"));
 }
 
 void enterPhase(MeasurementPhase nextPhase, uint32_t nowMs) {
@@ -274,9 +358,20 @@ void updateMeasurement(uint32_t nowMs) {
       enterPhase(MeasurementPhase::ACQUIRE, nowMs);
       break;
     case MeasurementPhase::ACQUIRE:
-      acquireTestSignal();
-      printResult();
-      enterPhase(MeasurementPhase::RECYCLE, nowMs);
+      if (injectedFault == FaultCode::NONE) {
+        acquireTestSignal();
+      } else {
+        resetResult();
+      }
+      {
+        const FaultCode fault = validateResult();
+        printResult(fault);
+        if (fault == FaultCode::NONE) {
+          enterPhase(MeasurementPhase::RECYCLE, nowMs);
+        } else {
+          recoverFromFault(fault);
+        }
+      }
       break;
     case MeasurementPhase::RECYCLE:
       state = ControllerState::IDLE;
@@ -286,11 +381,34 @@ void updateMeasurement(uint32_t nowMs) {
       Serial.println(F(" result=REPORTED state=IDLE"));
       break;
     case MeasurementPhase::NONE:
-      state = ControllerState::FAULT;
-      lastFault = "INVALID_PHASE";
-      printError(F("INVALID_PHASE"));
+      recoverFromFault(FaultCode::INVALID_PHASE);
       break;
   }
+}
+
+void handleTestFault(char *faultText, char *extra) {
+  if (state == ControllerState::RUNNING) {
+    printError(F("BUSY"));
+    return;
+  }
+  if (faultText == nullptr || extra != nullptr) {
+    printError(F("BAD_COMMAND"));
+    return;
+  }
+
+  if (strcmp(faultText, "NONE") == 0) {
+    injectedFault = FaultCode::NONE;
+  } else if (strcmp(faultText, "COLLECTION_TIMEOUT") == 0) {
+    injectedFault = FaultCode::COLLECTION_TIMEOUT;
+  } else if (strcmp(faultText, "HARDWARE_INTERFACE") == 0) {
+    injectedFault = FaultCode::HARDWARE_INTERFACE;
+  } else {
+    printError(F("INVALID_TEST_FAULT"));
+    return;
+  }
+
+  Serial.print(F("OK command=TEST_FAULT fault="));
+  Serial.println(faultName(injectedFault));
 }
 
 bool testSignalSettingsAreValid(const TestSignalSettings &candidate) {
@@ -425,11 +543,11 @@ void handleCommand(char *line) {
                state != ControllerState::CONFIGURED) {
       printError(F("NOT_READY"));
     } else if (!settingsAreValid(settings)) {
-      printError(F("INVALID_SETTINGS"));
+      recoverFromFault(FaultCode::INVALID_SETTINGS);
     } else {
       ++measurementNumber;
       state = ControllerState::RUNNING;
-      lastFault = "NONE";
+      lastFault = FaultCode::NONE;
       Serial.print(F("OK command=START measurement="));
       Serial.println(measurementNumber);
       enterPhase(MeasurementPhase::POLARIZE, millis());
@@ -438,6 +556,11 @@ void handleCommand(char *line) {
     if (argument1 != nullptr) {
       printError(F("BAD_COMMAND"));
     } else {
+      if (state == ControllerState::RUNNING) {
+        Serial.print(F("ABORTED measurement="));
+        Serial.print(measurementNumber);
+        Serial.println(F(" reason=OPERATOR_STOP"));
+      }
       state = ControllerState::IDLE;
       phase = MeasurementPhase::NONE;
       Serial.println(F("OK command=STOP state=IDLE"));
@@ -450,6 +573,7 @@ void handleCommand(char *line) {
     } else {
       settings = DEFAULT_SETTINGS;
       testSignal = DEFAULT_TEST_SIGNAL;
+      injectedFault = FaultCode::NONE;
       resetResult();
       state = ControllerState::CONFIGURED;
       Serial.println(F("OK command=DEFAULTS state=CONFIGURED"));
@@ -458,6 +582,8 @@ void handleCommand(char *line) {
     handleSet(argument1, argument2, argument3);
   } else if (strcmp(command, "TEST_SIGNAL") == 0) {
     handleTestSignal(argument1, argument2, argument3, extra);
+  } else if (strcmp(command, "TEST_FAULT") == 0) {
+    handleTestFault(argument1, argument2);
   } else {
     printError(F("UNKNOWN_COMMAND"));
   }
@@ -495,6 +621,8 @@ void setup() {
   resetResult();
   state = ControllerState::IDLE;
   phase = MeasurementPhase::NONE;
+  lastFault = FaultCode::NONE;
+  injectedFault = FaultCode::NONE;
   printStatus();
 }
 
