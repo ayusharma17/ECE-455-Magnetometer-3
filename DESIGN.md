@@ -38,7 +38,7 @@ Run polarization, quench/settle, collection, and recycle windows in order. The t
 
 ### 3. Acquire and calculate
 
-Collect the precession signal during its measurement window, estimate its frequency, and convert that frequency to a field value. A generated digital test signal supports initial development of timing, frequency calculation, and the measurement state machine. It does not test the final analog receive path or establish field sensitivity. The final sensor input is TBD: it may provide comparator timing edges or sampled waveform data. Edge-based acquisition will timestamp valid transitions only during the collection window and reject stale or spurious transitions after coil shutoff.
+Collect the precession signal during its measurement window, estimate its frequency, and convert that frequency to a field value using the proton gyromagnetic ratio. The generated-signal prototype uses the NIST free-proton value; the final calibration constant remains hardware- and sample-dependent. A generated digital test signal supports initial development of timing, frequency calculation, and the measurement state machine. It does not test the final analog receive path or establish field sensitivity. The final sensor input is TBD: it may provide comparator timing edges or sampled waveform data. Edge-based acquisition will timestamp valid transitions only during the collection window and reject stale or spurious transitions after coil shutoff. [JPM-4; NIST CODATA]
 
 ### 4. Validate and recover
 
@@ -77,3 +77,4 @@ The DIY/reference links come from slide 23 of the supplied [project deck](/Users
 | [Signals from the Subatomic World](https://www.abrazol.com/books/signals/) | DIY build and signal-processing reference. |
 | [PyPPM](https://hackaday.io/project/1376-pyppm-a-proton-precession-magnetometer-for-all) | Closest firmware reference: programmable polarization, quench, acquisition, dead-time, and recycle sequence. |
 | [JPM-4 design paper](https://sensors.myu-group.co.jp/sm_pdf/SM2789.pdf) | Configurable cycle timing, precision frequency counting, TCXO reference timing, and quality/sensitivity evaluation. |
+| [NIST 2022 CODATA constants](https://physics.nist.gov/cuu/pdf/all.pdf) | Proton gyromagnetic ratio used to convert precession frequency to magnetic-field magnitude. |
