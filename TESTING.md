@@ -75,8 +75,8 @@ Enter these commands one line at a time:
 ```text
 DEFAULTS
 SET polarization_ms 500
-SET settle_ms 250
-SET collection_ms 500
+SET settle_ms 1000
+SET collection_ms 2000
 SET recycle_ms 250
 DEMO_LED ON
 TEST_FAULT NONE

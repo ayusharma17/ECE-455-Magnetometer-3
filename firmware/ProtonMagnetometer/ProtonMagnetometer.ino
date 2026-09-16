@@ -70,7 +70,7 @@ struct MeasurementResult {
 
 // Development defaults only. Final values depend on the completed hardware.
 constexpr MeasurementSettings DEFAULT_SETTINGS = {
-    5000, 500, 1000, 1000, 1000, 3000, 10, 20,
+    5000, 1000, 2000, 1000, 1000, 3000, 10, 20,
 };
 constexpr TestSignalSettings DEFAULT_TEST_SIGNAL = {
     true, 2000000, 20, 0,
