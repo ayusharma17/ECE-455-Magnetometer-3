@@ -2,15 +2,19 @@
 
 This firmware can currently demonstrate configuration, measurement timing, generated-signal field calculation, quality checks, and fault recovery. It does not test a polarization coil, analog receiver, or real sensor input.
 
-## Upload to the Arduino Nano
+## Upload to the Arduino Nano Every
 
 1. Install Arduino IDE 2 from <https://www.arduino.cc/en/software/>.
-2. Open `firmware/ProtonMagnetometer/ProtonMagnetometer.ino`.
-3. Connect the Nano with a USB data cable.
-4. Select **Tools > Board > Arduino AVR Boards > Arduino Nano**.
-5. Select the board's serial port.
-6. Click **Verify**, then **Upload**.
-7. If upload fails, try **Tools > Processor > ATmega328P (Old Bootloader)**.
+2. Open **Boards Manager**, search for `Arduino megaAVR Boards`, and install the package.
+3. Open `firmware/ProtonMagnetometer/ProtonMagnetometer.ino`.
+4. Connect the Nano Every using a data-capable Micro-B USB cable.
+5. Select **Tools > Board > Arduino megaAVR Boards > Arduino Nano Every**.
+6. Select the new serial port, normally named `/dev/cu.usbmodem...` on macOS.
+7. Click **Verify**, then **Upload**.
+
+Do not select the plain **Arduino Nano** board or an `ATmega328P` processor option. Those settings are for the classic Nano, not the Nano Every.
+
+If no USB port appears, try another Micro-B cable before changing drivers or board settings. The power LED only confirms that the cable supplies power; a charge-only or damaged cable can light the board without carrying USB data. Bluetooth and `debug-console` ports are not the Arduino.
 
 ## Serial Monitor setup
 
