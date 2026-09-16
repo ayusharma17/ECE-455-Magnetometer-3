@@ -15,6 +15,14 @@ enum class ControllerState {
   FAULT,
 };
 
+enum class MeasurementPhase {
+  NONE,
+  POLARIZE,
+  SETTLE,
+  ACQUIRE,
+  RECYCLE,
+};
+
 struct MeasurementSettings {
   uint32_t polarizationMs;
   uint32_t settleMs;
@@ -33,7 +41,9 @@ constexpr MeasurementSettings DEFAULT_SETTINGS = {
 
 MeasurementSettings settings;
 ControllerState state = ControllerState::IDLE;
+MeasurementPhase phase = MeasurementPhase::NONE;
 uint32_t measurementNumber = 0;
+uint32_t phaseStartedAtMs = 0;
 const char *lastFault = "NONE";
 char commandBuffer[COMMAND_BUFFER_SIZE];
 size_t commandLength = 0;
@@ -49,6 +59,22 @@ const char *stateName(ControllerState value) {
       return "RUNNING";
     case ControllerState::FAULT:
       return "FAULT";
+  }
+  return "UNKNOWN";
+}
+
+const char *phaseName(MeasurementPhase value) {
+  switch (value) {
+    case MeasurementPhase::NONE:
+      return "NONE";
+    case MeasurementPhase::POLARIZE:
+      return "POLARIZE";
+    case MeasurementPhase::SETTLE:
+      return "SETTLE";
+    case MeasurementPhase::ACQUIRE:
+      return "ACQUIRE";
+    case MeasurementPhase::RECYCLE:
+      return "RECYCLE";
   }
   return "UNKNOWN";
 }
@@ -111,6 +137,8 @@ void printStatus() {
   Serial.print(stateName(state));
   Serial.print(F(" measurement="));
   Serial.print(measurementNumber);
+  Serial.print(F(" phase="));
+  Serial.print(phaseName(phase));
   Serial.print(F(" fault="));
   Serial.print(lastFault);
   printSettings();
@@ -120,6 +148,62 @@ void printStatus() {
 void printError(const __FlashStringHelper *code) {
   Serial.print(F("ERR code="));
   Serial.println(code);
+}
+
+void enterPhase(MeasurementPhase nextPhase, uint32_t nowMs) {
+  phase = nextPhase;
+  phaseStartedAtMs = nowMs;
+  Serial.print(F("EVENT measurement="));
+  Serial.print(measurementNumber);
+  Serial.print(F(" phase="));
+  Serial.println(phaseName(phase));
+}
+
+uint32_t phaseDurationMs() {
+  switch (phase) {
+    case MeasurementPhase::POLARIZE:
+      return settings.polarizationMs;
+    case MeasurementPhase::SETTLE:
+      return settings.settleMs;
+    case MeasurementPhase::ACQUIRE:
+      return settings.collectionMs;
+    case MeasurementPhase::RECYCLE:
+      return settings.recycleMs;
+    case MeasurementPhase::NONE:
+      return 0;
+  }
+  return 0;
+}
+
+void updateMeasurement(uint32_t nowMs) {
+  if (state != ControllerState::RUNNING ||
+      static_cast<uint32_t>(nowMs - phaseStartedAtMs) < phaseDurationMs()) {
+    return;
+  }
+
+  switch (phase) {
+    case MeasurementPhase::POLARIZE:
+      enterPhase(MeasurementPhase::SETTLE, nowMs);
+      break;
+    case MeasurementPhase::SETTLE:
+      enterPhase(MeasurementPhase::ACQUIRE, nowMs);
+      break;
+    case MeasurementPhase::ACQUIRE:
+      enterPhase(MeasurementPhase::RECYCLE, nowMs);
+      break;
+    case MeasurementPhase::RECYCLE:
+      state = ControllerState::IDLE;
+      phase = MeasurementPhase::NONE;
+      Serial.print(F("COMPLETE measurement="));
+      Serial.print(measurementNumber);
+      Serial.println(F(" result=TIMING_ONLY state=IDLE"));
+      break;
+    case MeasurementPhase::NONE:
+      state = ControllerState::FAULT;
+      lastFault = "INVALID_PHASE";
+      printError(F("INVALID_PHASE"));
+      break;
+  }
 }
 
 bool updateSetting(const char *field, uint32_t value) {
@@ -206,14 +290,19 @@ void handleCommand(char *line) {
     } else if (!settingsAreValid(settings)) {
       printError(F("INVALID_SETTINGS"));
     } else {
-      Serial.print(F("PENDING command=START reason=TASK_2 state="));
-      Serial.println(stateName(state));
+      ++measurementNumber;
+      state = ControllerState::RUNNING;
+      lastFault = "NONE";
+      Serial.print(F("OK command=START measurement="));
+      Serial.println(measurementNumber);
+      enterPhase(MeasurementPhase::POLARIZE, millis());
     }
   } else if (strcmp(command, "STOP") == 0) {
     if (argument1 != nullptr) {
       printError(F("BAD_COMMAND"));
     } else {
       state = ControllerState::IDLE;
+      phase = MeasurementPhase::NONE;
       Serial.println(F("OK command=STOP state=IDLE"));
     }
   } else if (strcmp(command, "DEFAULTS") == 0) {
@@ -262,9 +351,11 @@ void setup() {
   Serial.begin(SERIAL_BAUD);
   settings = DEFAULT_SETTINGS;
   state = ControllerState::IDLE;
+  phase = MeasurementPhase::NONE;
   printStatus();
 }
 
 void loop() {
   readSerialCommands();
+  updateMeasurement(millis());
 }
