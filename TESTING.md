@@ -25,6 +25,49 @@ Open Serial Monitor and select:
 
 Commands are uppercase. After reset, the controller should report `state=IDLE`, `phase=NONE`, and `fault=NONE`.
 
+## RGB demo indicator circuit
+
+The firmware assumes a common-cathode RGB LED and uses steady digital outputs, not PWM. Disconnect USB power while building the circuit.
+
+Parts:
+
+- One common-cathode RGB LED
+- Three `220–330 Ω` resistors
+- Breadboard and jumper wires
+
+Connect each color through its own resistor:
+
+| Nano Every pin | Connection |
+| --- | --- |
+| `D5` | Resistor → red LED leg |
+| `D6` | Resistor → green LED leg |
+| `D9` | Resistor → blue LED leg |
+| `GND` | RGB LED common-cathode leg |
+
+RGB LED leg order varies by manufacturer, so identify the common and color legs from the LED datasheet or package. Do not connect any color directly to a Nano pin without a resistor.
+
+If the LED is common-anode instead, connect its common leg to `5V` and change `RGB_COMMON_ANODE` near the top of the sketch from `false` to `true` before uploading.
+
+The colors indicate:
+
+| Firmware phase | Color |
+| --- | --- |
+| `IDLE` | Off |
+| `POLARIZE` | Red |
+| `SETTLE` | Yellow |
+| `ACQUIRE` | Blue |
+| `RECYCLE` after a valid result | Green |
+| Recovered fault | Flashing red |
+
+Enable or disable the complete indicator with:
+
+```text
+DEMO_LED ON
+DEMO_LED OFF
+```
+
+Blue acquisition indication is for generated-signal demonstrations. Run `DEMO_LED OFF` before connecting the real coil and low-noise receive path, or place the eventual indicator remotely, because LED current and switching may interfere with the measured signal.
+
 ## Successful measurement demo
 
 Enter these commands one line at a time:
@@ -35,6 +78,7 @@ SET polarization_ms 500
 SET settle_ms 250
 SET collection_ms 500
 SET recycle_ms 250
+DEMO_LED ON
 TEST_FAULT NONE
 TEST_SIGNAL 2130000 20 1000
 START

@@ -58,9 +58,9 @@ The first implementation will initialize the firmware, accept a generated test s
 
 ## Current platform and future requirements
 
-The current prototype targets an Arduino Nano. Its purpose is to develop and test the measurement-sequence logic with a generated input before the magnetometer hardware exists.
+The current prototype targets an Arduino Nano Every. Its purpose is to develop and test the measurement-sequence logic with a generated input before the magnetometer hardware exists. A disableable RGB status LED may show the sequence during demonstrations; it is not part of the sensing path and should be disabled or located remotely during real low-noise acquisition. [JPM-4]
 
-The final controller remains TBD. It must provide the selected signal-input interface, deterministic measurement timing, a sufficiently stable and calibrated timebase or a way to use an external reference, enough memory for the selected processing method, and interfaces for the final coil driver and any selected storage. The Arduino Nano prototype will show which of these requirements exceed its capabilities.
+The final controller remains TBD. It must provide the selected signal-input interface, deterministic measurement timing, a sufficiently stable and calibrated timebase or a way to use an external reference, enough memory for the selected processing method, and interfaces for the final coil driver and any selected storage. The Arduino Nano Every prototype will show which of these requirements exceed its capabilities.
 
 ## Magnetometer reference projects
 

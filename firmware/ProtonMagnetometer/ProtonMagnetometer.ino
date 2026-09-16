@@ -9,6 +9,11 @@ constexpr size_t COMMAND_BUFFER_SIZE = 96;
 constexpr uint32_t MAX_INTERVAL_MS = INT32_MAX;
 constexpr uint32_t PROTON_MILLIHZ_PER_NT_X1E6 = 42577478;
 constexpr uint32_t MAX_TEST_SAMPLES = 1000;
+constexpr uint8_t RGB_RED_PIN = 5;
+constexpr uint8_t RGB_GREEN_PIN = 6;
+constexpr uint8_t RGB_BLUE_PIN = 9;
+constexpr bool RGB_COMMON_ANODE = false;
+constexpr uint32_t FAULT_BLINK_MS = 250;
 
 enum class ControllerState {
   IDLE,
@@ -80,6 +85,7 @@ uint32_t measurementNumber = 0;
 uint32_t phaseStartedAtMs = 0;
 FaultCode lastFault = FaultCode::NONE;
 FaultCode injectedFault = FaultCode::NONE;
+bool demoRgbEnabled = true;
 char commandBuffer[COMMAND_BUFFER_SIZE];
 size_t commandLength = 0;
 bool commandOverflow = false;
@@ -136,6 +142,56 @@ const char *faultName(FaultCode value) {
       return "HARDWARE_INTERFACE";
   }
   return "UNKNOWN";
+}
+
+void writeRgbChannel(uint8_t pin, bool on) {
+  const uint8_t level =
+      RGB_COMMON_ANODE ? (on ? LOW : HIGH) : (on ? HIGH : LOW);
+  digitalWrite(pin, level);
+}
+
+void writeRgb(bool red, bool green, bool blue) {
+  writeRgbChannel(RGB_RED_PIN, red);
+  writeRgbChannel(RGB_GREEN_PIN, green);
+  writeRgbChannel(RGB_BLUE_PIN, blue);
+}
+
+void setupRgbIndicator() {
+  writeRgb(false, false, false);
+  pinMode(RGB_RED_PIN, OUTPUT);
+  pinMode(RGB_GREEN_PIN, OUTPUT);
+  pinMode(RGB_BLUE_PIN, OUTPUT);
+}
+
+void updateRgbIndicator(uint32_t nowMs) {
+  if (!demoRgbEnabled) {
+    writeRgb(false, false, false);
+    return;
+  }
+
+  if (state != ControllerState::RUNNING && lastFault != FaultCode::NONE) {
+    const bool redOn = (nowMs / FAULT_BLINK_MS) % 2U == 0;
+    writeRgb(redOn, false, false);
+    return;
+  }
+
+  switch (phase) {
+    case MeasurementPhase::POLARIZE:
+      writeRgb(true, false, false);
+      break;
+    case MeasurementPhase::SETTLE:
+      writeRgb(true, true, false);
+      break;
+    case MeasurementPhase::ACQUIRE:
+      writeRgb(false, false, true);
+      break;
+    case MeasurementPhase::RECYCLE:
+      writeRgb(false, true, false);
+      break;
+    case MeasurementPhase::NONE:
+      writeRgb(false, false, false);
+      break;
+  }
 }
 
 bool settingsAreValid(const MeasurementSettings &candidate) {
@@ -215,6 +271,8 @@ void printStatus() {
   printTestSignal();
   Serial.print(F(" test_fault="));
   Serial.print(faultName(injectedFault));
+  Serial.print(F(" demo_led="));
+  Serial.print(demoRgbEnabled ? F("ON") : F("OFF"));
   Serial.println();
 }
 
@@ -411,6 +469,30 @@ void handleTestFault(char *faultText, char *extra) {
   Serial.println(faultName(injectedFault));
 }
 
+void handleDemoLed(char *modeText, char *extra) {
+  if (state == ControllerState::RUNNING) {
+    printError(F("BUSY"));
+    return;
+  }
+  if (modeText == nullptr || extra != nullptr) {
+    printError(F("BAD_COMMAND"));
+    return;
+  }
+
+  if (strcmp(modeText, "ON") == 0) {
+    demoRgbEnabled = true;
+  } else if (strcmp(modeText, "OFF") == 0) {
+    demoRgbEnabled = false;
+    writeRgb(false, false, false);
+  } else {
+    printError(F("INVALID_DEMO_LED"));
+    return;
+  }
+
+  Serial.print(F("OK command=DEMO_LED mode="));
+  Serial.println(demoRgbEnabled ? F("ON") : F("OFF"));
+}
+
 bool testSignalSettingsAreValid(const TestSignalSettings &candidate) {
   const uint32_t upperOffset =
       candidate.spreadMilliHz - candidate.spreadMilliHz / 2U;
@@ -573,7 +655,9 @@ void handleCommand(char *line) {
     } else {
       settings = DEFAULT_SETTINGS;
       testSignal = DEFAULT_TEST_SIGNAL;
+      lastFault = FaultCode::NONE;
       injectedFault = FaultCode::NONE;
+      demoRgbEnabled = true;
       resetResult();
       state = ControllerState::CONFIGURED;
       Serial.println(F("OK command=DEFAULTS state=CONFIGURED"));
@@ -584,6 +668,8 @@ void handleCommand(char *line) {
     handleTestSignal(argument1, argument2, argument3, extra);
   } else if (strcmp(command, "TEST_FAULT") == 0) {
     handleTestFault(argument1, argument2);
+  } else if (strcmp(command, "DEMO_LED") == 0) {
+    handleDemoLed(argument1, argument2);
   } else {
     printError(F("UNKNOWN_COMMAND"));
   }
@@ -616,6 +702,7 @@ void readSerialCommands() {
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
+  setupRgbIndicator();
   settings = DEFAULT_SETTINGS;
   testSignal = DEFAULT_TEST_SIGNAL;
   resetResult();
@@ -623,10 +710,13 @@ void setup() {
   phase = MeasurementPhase::NONE;
   lastFault = FaultCode::NONE;
   injectedFault = FaultCode::NONE;
+  demoRgbEnabled = true;
   printStatus();
 }
 
 void loop() {
   readSerialCommands();
-  updateMeasurement(millis());
+  const uint32_t nowMs = millis();
+  updateMeasurement(nowMs);
+  updateRgbIndicator(nowMs);
 }
