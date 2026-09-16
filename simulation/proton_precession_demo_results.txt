@@ -1,0 +1,6 @@
+true_frequency_hz=2128.873946
+coarse_fft_frequency_hz=2128.886556
+estimated_frequency_hz=2128.883433
+true_field_nt=50000.000
+estimated_field_nt=50000.223
+field_error_nt=+0.223
