@@ -34,7 +34,7 @@ Start the controller, load defaults, expose its status, and accept a measurement
 
 ### 2. Control the measurement timing
 
-Run polarization, quench/settle, collection, and recycle windows in order. The timing state machine can be implemented now. Quenching means ending the polarization current; the final coil-control behavior and timing values are TBD until the coil driver and sensor hardware are ready. When the magnetometer integrates with the boat, this step will wait for a `quiet/ready` signal before collection and return `complete` or `failed` afterward; the interface is TBD. This coordinates measurements with the boat without controlling navigation. [Project deck, slide 20; PyPPM]
+Run polarization, quench/settle, collection, and recycle windows in order. The timing state machine can be implemented now. Quenching means ending the polarization current; the final coil-control behavior and timing values are TBD until the coil driver and sensor hardware are ready. In the final circuit, the controller should assert a logic-level control signal during `POLARIZE` to a properly rated MOSFET or gate driver. A separate power supply and switching stage will provide the coil voltage and current; the Nano must not power the coil directly. The control pin and driver circuit are TBD. When the magnetometer integrates with the boat, this step will wait for a `quiet/ready` signal before collection and return `complete` or `failed` afterward; the interface is TBD. This coordinates measurements with the boat without controlling navigation. [Project deck, slide 20; PyPPM]
 
 ### 3. Acquire and calculate
 

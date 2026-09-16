@@ -68,6 +68,10 @@ DEMO_LED OFF
 
 Blue acquisition indication is for generated-signal demonstrations. Run `DEMO_LED OFF` before connecting the real coil and low-noise receive path, or place the eventual indicator remotely, because LED current and switching may interfere with the measured signal.
 
+## Polarization output
+
+The current firmware demonstrates `POLARIZE` timing with the RGB status LED only; it does not yet drive a coil-control pin. In the final circuit, a Nano digital output should control a properly rated MOSFET or gate driver during `POLARIZE`. The coil voltage and current must come from a separate power supply through that switching stage, never from a Nano pin. The control pin and driver circuit will be selected when the coil hardware is finalized.
+
 ## Successful measurement demo
 
 Enter these commands one line at a time:
