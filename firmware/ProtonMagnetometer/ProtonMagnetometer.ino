@@ -68,6 +68,14 @@ struct MeasurementResult {
   uint32_t frequencySpreadMilliHz;
 };
 
+struct MeasurementRecord {
+  bool available;
+  uint32_t measurementNumber;
+  MeasurementSettings settings;
+  MeasurementResult result;
+  FaultCode fault;
+};
+
 // Development defaults only. Final values depend on the completed hardware.
 constexpr MeasurementSettings DEFAULT_SETTINGS = {
     5000, 1000, 2000, 1000, 1000, 3000, 10, 20,
@@ -77,8 +85,10 @@ constexpr TestSignalSettings DEFAULT_TEST_SIGNAL = {
 };
 
 MeasurementSettings settings;
+MeasurementSettings activeSettings;
 TestSignalSettings testSignal;
 MeasurementResult result;
+MeasurementRecord lastRecord;
 ControllerState state = ControllerState::IDLE;
 MeasurementPhase phase = MeasurementPhase::NONE;
 uint32_t measurementNumber = 0;
@@ -228,23 +238,23 @@ bool parseUint32(const char *text, uint32_t &value) {
   return true;
 }
 
-void printSettings() {
+void printSettings(const MeasurementSettings &values) {
   Serial.print(F(" polarization_ms="));
-  Serial.print(settings.polarizationMs);
+  Serial.print(values.polarizationMs);
   Serial.print(F(" settle_ms="));
-  Serial.print(settings.settleMs);
+  Serial.print(values.settleMs);
   Serial.print(F(" collection_ms="));
-  Serial.print(settings.collectionMs);
+  Serial.print(values.collectionMs);
   Serial.print(F(" recycle_ms="));
-  Serial.print(settings.recycleMs);
+  Serial.print(values.recycleMs);
   Serial.print(F(" min_frequency_hz="));
-  Serial.print(settings.minFrequencyHz);
+  Serial.print(values.minFrequencyHz);
   Serial.print(F(" max_frequency_hz="));
-  Serial.print(settings.maxFrequencyHz);
+  Serial.print(values.maxFrequencyHz);
   Serial.print(F(" min_frequency_samples="));
-  Serial.print(settings.minFrequencySamples);
+  Serial.print(values.minFrequencySamples);
   Serial.print(F(" max_frequency_spread_hz="));
-  Serial.print(settings.maxFrequencySpreadHz);
+  Serial.print(values.maxFrequencySpreadHz);
 }
 
 void printTestSignal() {
@@ -267,7 +277,7 @@ void printStatus() {
   Serial.print(phaseName(phase));
   Serial.print(F(" fault="));
   Serial.print(faultName(lastFault));
-  printSettings();
+  printSettings(settings);
   printTestSignal();
   Serial.print(F(" test_fault="));
   Serial.print(faultName(injectedFault));
@@ -318,21 +328,31 @@ void acquireTestSignal() {
       PROTON_MILLIHZ_PER_NT_X1E6);
 }
 
-void printResult(FaultCode fault) {
+void saveMeasurementRecord(FaultCode fault) {
+  lastRecord.available = true;
+  lastRecord.measurementNumber = measurementNumber;
+  lastRecord.settings = activeSettings;
+  lastRecord.result = result;
+  lastRecord.fault = fault;
+}
+
+void printMeasurementRecord(const MeasurementRecord &record) {
   Serial.print(F("RESULT measurement="));
-  Serial.print(measurementNumber);
+  Serial.print(record.measurementNumber);
   Serial.print(F(" frequency_millihz="));
-  Serial.print(result.frequencyMilliHz);
+  Serial.print(record.result.frequencyMilliHz);
   Serial.print(F(" field_nt="));
-  Serial.print(result.fieldNt);
+  Serial.print(record.result.fieldNt);
   Serial.print(F(" samples="));
-  Serial.print(result.frequencySamples);
+  Serial.print(record.result.frequencySamples);
   Serial.print(F(" spread_millihz="));
-  Serial.print(result.frequencySpreadMilliHz);
+  Serial.print(record.result.frequencySpreadMilliHz);
   Serial.print(F(" quality="));
-  Serial.print(fault == FaultCode::NONE ? F("VALID") : F("INVALID"));
+  Serial.print(record.fault == FaultCode::NONE ? F("VALID") : F("INVALID"));
   Serial.print(F(" reason="));
-  Serial.println(faultName(fault));
+  Serial.print(faultName(record.fault));
+  printSettings(record.settings);
+  Serial.println();
 }
 
 FaultCode validateResult() {
@@ -342,20 +362,20 @@ FaultCode validateResult() {
   if (!result.available) {
     return FaultCode::MISSING_SIGNAL;
   }
-  if (result.frequencySamples < settings.minFrequencySamples) {
+  if (result.frequencySamples < activeSettings.minFrequencySamples) {
     return FaultCode::INSUFFICIENT_SAMPLES;
   }
 
   const uint64_t minimumMilliHz =
-      static_cast<uint64_t>(settings.minFrequencyHz) * 1000ULL;
+      static_cast<uint64_t>(activeSettings.minFrequencyHz) * 1000ULL;
   const uint64_t maximumMilliHz =
-      static_cast<uint64_t>(settings.maxFrequencyHz) * 1000ULL;
+      static_cast<uint64_t>(activeSettings.maxFrequencyHz) * 1000ULL;
   if (result.frequencyMilliHz < minimumMilliHz ||
       result.frequencyMilliHz > maximumMilliHz) {
     return FaultCode::FREQUENCY_OUT_OF_RANGE;
   }
   if (result.frequencySpreadMilliHz >
-      static_cast<uint64_t>(settings.maxFrequencySpreadHz) * 1000ULL) {
+      static_cast<uint64_t>(activeSettings.maxFrequencySpreadHz) * 1000ULL) {
     return FaultCode::UNSTABLE_SIGNAL;
   }
   return FaultCode::NONE;
@@ -389,13 +409,13 @@ void enterPhase(MeasurementPhase nextPhase, uint32_t nowMs) {
 uint32_t phaseDurationMs() {
   switch (phase) {
     case MeasurementPhase::POLARIZE:
-      return settings.polarizationMs;
+      return activeSettings.polarizationMs;
     case MeasurementPhase::SETTLE:
-      return settings.settleMs;
+      return activeSettings.settleMs;
     case MeasurementPhase::ACQUIRE:
-      return settings.collectionMs;
+      return activeSettings.collectionMs;
     case MeasurementPhase::RECYCLE:
-      return settings.recycleMs;
+      return activeSettings.recycleMs;
     case MeasurementPhase::NONE:
       return 0;
   }
@@ -423,7 +443,8 @@ void updateMeasurement(uint32_t nowMs) {
       }
       {
         const FaultCode fault = validateResult();
-        printResult(fault);
+        saveMeasurementRecord(fault);
+        printMeasurementRecord(lastRecord);
         if (fault == FaultCode::NONE) {
           enterPhase(MeasurementPhase::RECYCLE, nowMs);
         } else {
@@ -618,6 +639,14 @@ void handleCommand(char *line) {
       return;
     }
     printStatus();
+  } else if (strcmp(command, "LAST") == 0) {
+    if (argument1 != nullptr) {
+      printError(F("BAD_COMMAND"));
+    } else if (!lastRecord.available) {
+      printError(F("NO_RESULT"));
+    } else {
+      printMeasurementRecord(lastRecord);
+    }
   } else if (strcmp(command, "START") == 0) {
     if (argument1 != nullptr) {
       printError(F("BAD_COMMAND"));
@@ -628,6 +657,8 @@ void handleCommand(char *line) {
       recoverFromFault(FaultCode::INVALID_SETTINGS);
     } else {
       ++measurementNumber;
+      activeSettings = settings;
+      resetResult();
       state = ControllerState::RUNNING;
       lastFault = FaultCode::NONE;
       Serial.print(F("OK command=START measurement="));
@@ -704,8 +735,10 @@ void setup() {
   Serial.begin(SERIAL_BAUD);
   setupRgbIndicator();
   settings = DEFAULT_SETTINGS;
+  activeSettings = settings;
   testSignal = DEFAULT_TEST_SIGNAL;
   resetResult();
+  lastRecord.available = false;
   state = ControllerState::IDLE;
   phase = MeasurementPhase::NONE;
   lastFault = FaultCode::NONE;

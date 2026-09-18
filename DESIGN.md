@@ -46,7 +46,7 @@ Check the result for missing signal, out-of-range frequency, instability, collec
 
 ### 5. Report and save results
 
-Create one record containing the measurement number, settings used, estimated frequency, field value, quality status, and diagnostics. Send the record over serial, and allow serial commands to start or stop a measurement, change settings, and read status. Persistent storage, a physical button, and a display are TBD if selected for the final hardware.
+Create one record containing the measurement number, settings used, estimated frequency, field value, quality status, and diagnostics. Send the record over serial, retain the latest record in RAM for the `LAST` command, and allow serial commands to start or stop a measurement, change settings, and read status. The RAM record is cleared by reset. Persistent storage, a physical button, and a display are TBD if selected for the final hardware.
 
 ## Hardware-dependent decisions
 

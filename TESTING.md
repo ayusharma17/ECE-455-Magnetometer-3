@@ -94,7 +94,7 @@ The timing events should appear in this order:
 EVENT measurement=1 phase=POLARIZE
 EVENT measurement=1 phase=SETTLE
 EVENT measurement=1 phase=ACQUIRE
-RESULT measurement=1 frequency_millihz=2130000 field_nt=50026 samples=20 spread_millihz=1000 quality=VALID reason=NONE
+RESULT measurement=1 frequency_millihz=2130000 field_nt=50026 samples=20 spread_millihz=1000 quality=VALID reason=NONE polarization_ms=500 settle_ms=1000 collection_ms=2000 recycle_ms=250 min_frequency_hz=1000 max_frequency_hz=3000 min_frequency_samples=10 max_frequency_spread_hz=20
 EVENT measurement=1 phase=RECYCLE
 COMPLETE measurement=1 result=REPORTED state=IDLE
 ```
@@ -102,6 +102,8 @@ COMPLETE measurement=1 result=REPORTED state=IDLE
 The measurement number may differ if other measurements were started after reset.
 
 Run `STATUS` afterward. It should show `state=IDLE`, `phase=NONE`, and `fault=NONE`.
+
+Run `LAST` to print the same complete measurement record again. The latest record is retained in RAM until the board resets; persistent storage is not implemented because the final storage hardware remains TBD. Running `LAST` before any measurement finishes should return `ERR code=NO_RESULT`.
 
 ## Quality and recovery demonstrations
 
@@ -170,6 +172,7 @@ The prototype passes this demo when:
 - all four phases occur in order;
 - the 2130 Hz test signal reports approximately `50026` nT;
 - the valid case reaches `COMPLETE` and returns to `IDLE`;
+- `LAST` reproduces the latest record, including the settings used;
 - every invalid case reports the expected reason and reaches `RECOVERED state=IDLE`;
 - invalid or busy commands do not change the active configuration.
 
