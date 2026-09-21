@@ -60,7 +60,7 @@ The first implementation will initialize the firmware, accept a generated test s
 
 The current prototype targets an Arduino Nano Every. Its purpose is to develop and test the measurement-sequence logic with a generated input before the magnetometer hardware exists. A disableable RGB status LED may show the sequence during demonstrations; it is not part of the sensing path and should be disabled or located remotely during real low-noise acquisition. [JPM-4]
 
-The final controller remains TBD. It must provide the selected signal-input interface, deterministic measurement timing, a sufficiently stable and calibrated timebase or a way to use an external reference, enough memory for the selected processing method, and interfaces for the final coil driver and any selected storage. The Arduino Nano Every prototype will show which of these requirements exceed its capabilities.
+The final controller remains TBD. The Arduino Nano Every (20 MHz, 50 ns timer tick) cannot meet the project's 1 nT sensitivity requirement via edge timing alone, which requires ~0.04 Hz frequency resolution (~200 ns period resolution across a 1–2 s window) and is limited to ~5 nT at best without external interpolation or reference timing. Its memory and single hardware serial interface also limit concurrent GPS logging and high-rate sampling. Past student projects addressed this by adopting 32-bit platforms such as the Teensy 4.1 or RP2040, using high-resolution timers, ADC sampling with sub-sample interpolation, or dedicated reciprocal counters. The Nano Every remains the prototype target for sequencing logic until the sensor input interface and final platform are integrated. [Project deck, slide 20]
 
 ## Magnetometer reference projects
 
