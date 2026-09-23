@@ -1,0 +1,66 @@
+* PyPPM v1.3-style 12 V polarization circuit
+* Educational LTspice transient model
+*
+* Open this file directly in LTspice, then click Run.
+* Suggested traces: I(LCOIL), V(CCS_MINUS), V(GATE), I(DTVS)
+
+* ----- Supplies -----
+VBAT CCS_PLUS 0 12
+VLOGIC VBUS 0 5
+
+* PyPPM supply bypass capacitors
+C56 CCS_PLUS 0 10u
+C57 CCS_PLUS 0 100n
+C55 VBUS 0 100n
+
+* Reverse-polarity protection diode shown on the PyPPM sheet.
+* It is normally reverse-biased with the battery connected correctly.
+D07 0 CCS_PLUS DPOWER
+
+* ----- Sensor coil -----
+* PyPPM's documented coil is approximately 5.5 ohm and 7.5 mH.
+RCOIL CCS_PLUS COIL_INTERNAL 5.5
+LCOIL COIL_INTERNAL CCS_MINUS 7.5m
+
+* R32 is the 1 kohm resistor across the two CCS terminals.
+R32 CCS_PLUS CCS_MINUS 1k
+
+* ----- Arduino command and gate-driver approximation -----
+* Command goes HIGH at 1 ms, stays HIGH for 10 ms, then goes LOW.
+VCOMMAND CCS_EN 0 PULSE(0 5 1m 50n 50n 10m 20m)
+
+* RP3 keeps the enable line LOW if the controller is disconnected.
+RP3 CCS_EN 0 47k
+
+* The FAN3111E is approximated as a fast 0/5 V driver with 1 ohm
+* output resistance. R31 is the real 33.2 ohm series gate resistor.
+BDRIVER DRIVER_OUT 0 V=if(V(CCS_EN)>2.5,5,0)
+RDRIVER DRIVER_OUT GATE_R 1
+R31 GATE_R GATE 33.2
+
+* Effective gate capacitance makes the gate charge/discharge visible.
+CGATE GATE 0 2.2n
+RGATE_PULLDOWN GATE 0 1Meg
+
+* ----- Power switch and inductive-energy clamp -----
+* Q01 is represented by a voltage-controlled switch. Ron is chosen to
+* approximate an IRLR024N driven from 5 V; this is not a full MOSFET model.
+S_Q01 CCS_MINUS 0 GATE 0 Q01_SWITCH
+.model Q01_SWITCH SW(Ron=0.065 Roff=1G Vt=2.5 Vh=0.2)
+
+* SMDJ45A-style unidirectional TVS: anode at ground, cathode at drain.
+* It avalanches when CCS_MINUS rises to roughly 50 V after switch-off.
+DTVS 0 CCS_MINUS TVS45A
+.model TVS45A D(Is=1n Rs=0.55 N=1 BV=50 IBV=1m Cjo=2n)
+
+.model DPOWER D(Is=10n Rs=0.05 N=1.5 BV=100 IBV=10u)
+
+* ----- Analysis -----
+.tran 0 16m 0 1u
+
+* Values appear in View -> SPICE Error Log after the run.
+.meas TRAN I_COIL_MAX MAX I(LCOIL)
+.meas TRAN V_DRAIN_MAX MAX V(CCS_MINUS)
+.meas TRAN T_QUENCH TRIG I(LCOIL) VAL=1 FALL=1 TARG I(LCOIL) VAL=0.01 FALL=1
+
+.end
