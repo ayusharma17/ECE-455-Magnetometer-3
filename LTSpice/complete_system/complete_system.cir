@@ -1,0 +1,101 @@
+* Unified Proton Magnetometer Simulation
+.options abstol=1e-12 reltol=1e-4 chgtol=1e-15
+
+* 1. 12V Battery & Reverse Protection
+VBAT vbat_raw 0 12.0
+D07 vbat_raw vbus DPOWER
+.model DPOWER D(Is=10n Rs=0.05 N=1.5 BV=100 IBV=10u)
+C56 vbus 0 10u
+C57 vbus 0 100n
+R_bus_link vbus ccs_plus 0.01
+
+* 2. Quench Clamping & Damping
+R32 ccs_plus ccs_minus 1k
+DTVS1 0 ccs_minus TVS45A
+.model TVS45A D(Is=1n Rs=0.55 N=1 BV=50 IBV=1m Cjo=2n)
+
+* 3. Power MOSFET Switch
+M01 ccs_minus gate 0 0 QSIM
+.model QSIM NMOS(VTO=2 KP=5 LAMBDA=0.01 RD=5m RS=5m)
+R31 driver_out gate 33.2
+R_gate_pd gate 0 47k
+
+* Microcontroller Polarization Enable: 0 to 5V pulse, from 2 ms to 12 ms
+V_POL_EN driver_out 0 PULSE(0 5 2m 50n 50n 10m 50m)
+
+* 4. DPDT Relay Model (Break-Before-Make)
+* RELAY_EN: 0V (t < 1ms), 5V (1ms to 14ms: Polarization), 0V (t > 14ms: Preamp)
+V_RELAY_EN v_rel_coil 0 PWL(0 0 1m 0 1.2m 5 14m 5 14.2m 0 50m 0)
+
+* Normally Open contacts (to Polarization)
+S_rel_no1 ccs_plus coil_pos v_rel_coil 0 SW_NO
+S_rel_no2 coil_neg ccs_minus v_rel_coil 0 SW_NO
+
+* Normally Closed contacts (to Preamp)
+S_rel_nc1 in_p coil_pos 0 v_rel_coil SW_NC
+S_rel_nc2 in_n coil_neg 0 v_rel_coil SW_NC
+
+* Non-overlapping break-before-make: both switches open between 2.2V and 2.8V
+.model SW_NO VSWITCH(Ron=0.02 Roff=1e8 Von=3.2 Voff=2.8)
+.model SW_NC VSWITCH(Ron=0.02 Roff=1e8 Von=-1.8 Voff=-2.2)
+
+* 5. Sensor Coil (7.5 mH, 5.5 Ohm)
+LCOIL coil_pos coil_int 7.5m
+RCOIL coil_int coil_mid 5.5
+
+* Induced Proton Precession Free Induction Decay Signal (10 uV, 2.214 kHz, T2* = 200 ms)
+* Activated after coil is released into Earth's field (t > 12 ms)
+B_FID coil_mid coil_neg V=10u*exp(-(time-12m)/0.2)*sin(2*3.14159265*2214*(time-12m))*(time > 12m)
+
+* 6. Preamp Front-End: Resonant Tuning & Protection
+C_TUNE in_p in_n 690n
+R_DAMP in_p in_n 2.2k
+
+* Antiparallel Schottky Protection Diodes (SD101A)
+D_PROT1 in_p in_n D_SCHOTTKY
+D_PROT2 in_n in_p D_SCHOTTKY
+.model D_SCHOTTKY D(Is=1e-7 Rs=1 N=1.05 Cjo=10p BV=30)
+
+* Series R and Common-Mode C
+R_IN1 in_p ina_in_p 49.9
+R_IN2 in_n ina_in_n 49.9
+C_CM1 ina_in_p v_cm_node 10n
+C_CM2 ina_in_n v_cm_node 10n
+
+* Common-mode noise generator: 100 mV 60 Hz + 10 mV 10 kHz
+V_CM_60Hz v_cm_node 0 SIN(0 0.1 60 0 0)
+
+* Bias Return Resistors
+R_BIAS1 ina_in_p v_cm_node 1Meg
+R_BIAS2 ina_in_n v_cm_node 1Meg
+
+* 7. Low-Noise Instrumentation Amplifier (Stage 1)
+* High CMRR differential amplifier, Gain = 50 V/V
+E_INA ina_out 0 ina_in_p ina_in_n 50
+
+* 8. Active Bandpass Filter & Mid-Stage Gain (Stages 2 & 3)
+* Multiple Feedback Bandpass Filter (f0 = 2.214 kHz, Q ~ 4.7, Gain ~ 10.3)
+R_BP1 ina_out bp_node1 3.3k
+R_BP2 bp_node1 0 1.0k
+C_BP1 bp_node1 bp_in_inv 10n
+C_BP2 bp_node1 bp_out 10n
+R_BP3 bp_in_inv bp_out 68k
+E_OP1 bp_out 0 0 bp_in_inv 100000
+
+* Stage 3 Inverting Gain (Gain = -20 V/V with clamp limit to +-5V rails)
+R_G1 bp_out gain_in_inv 1k
+R_G2 gain_in_inv filter_out 20k
+C_G2 gain_in_inv filter_out 100p
+* Rail-limited op amp: outputs between -4.5V and +4.5V
+B_OP2 filter_out 0 V=MAX(-4.5, MIN(4.5, -100000 * V(gain_in_inv)))
+
+* 9. Digitization: Fast Comparator with Hysteresis
+B_COMP comp_out 0 V=IF(V(filter_out) > 0.015, 3.3, IF(V(filter_out) < -0.015, 0, 1.65))
+R_LOAD comp_out 0 100k
+
+.tran 0 30m 0 1u
+
+.meas TRAN I_COIL_PEAK MAX I(LCOIL)
+.meas TRAN V_CLAMP_MAX MAX V(ccs_minus)
+.meas TRAN V_SIG_MAX MAX V(filter_out) FROM 17m TO 30m
+.end

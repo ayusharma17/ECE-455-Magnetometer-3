@@ -1,0 +1,107 @@
+* Proton Precession Magnetometer - Measuring Circuit and Relay Simulation
+* ECE 455 Capstone Project
+* Reference: PyPPM v1.3 (Sheets 7, 8, 9, 10, 13), JPM-4, Sri Lanka (2008), ECE 455 2024
+
+.options abstol=1e-12 reltol=1e-4 chgtol=1e-15
+
+* -----------------------------------------------------------------
+* 1. SENSOR COIL AND INDUCED PRECESSION SIGNAL
+* -----------------------------------------------------------------
+* Physical coil: L = 7.5 mH, R = 5.5 Ohm
+Lcoil coil_pos coil_int 7.5m
+Rcoil coil_int coil_mid 5.5
+
+* Induced proton precession free induction decay (FID) signal
+* f0 = 2214 Hz (Madison WI ~52 uT), V0 = 10 uV peak, T2* = 200 ms decay
+* Signal is present during acquisition
+B_precess coil_mid coil_neg V=10u*exp(-time/0.2)*sin(2*3.14159265*2214*time)
+
+* Common-mode noise source (60 Hz powerline hum + 10 kHz motor ripple from boat)
+V_cm noise_gnd 0 SIN(0 0.1 60 0 0)
+V_ripple coil_neg noise_gnd SIN(0 0.01 10k 0 0)
+
+* -----------------------------------------------------------------
+* 2. DPDT RELAY MODEL (Switching from Polarization to Preamp)
+* -----------------------------------------------------------------
+* Relay control signal: 0V during polarization (t < 2 ms), 5V during measurement (t > 2.5 ms)
+V_relay_cmd s_relay 0 PWL(0 0 2m 0 2.2m 5 30m 5)
+
+* Switches to polarization quench dummy (closed when s_relay < 2.0V)
+S_pol_pos coil_pos pol_pos_term s_relay 0 SW_NORM_CLOSED
+S_pol_neg coil_neg pol_neg_term s_relay 0 SW_NORM_CLOSED
+R_pol_dummy pol_pos_term pol_neg_term 1k
+
+* Switches to measurement preamplifier side (closed when s_relay > 3.0V)
+S_amp_pos coil_pos in_p s_relay 0 SW_NORM_OPEN
+S_amp_neg coil_neg in_n s_relay 0 SW_NORM_OPEN
+
+* Non-overlapping break-before-make: both switches open between 2.0V and 3.0V
+.model SW_NORM_CLOSED VSWITCH(Ron=0.02 Roff=1e8 Von=1.8 Voff=2.2)
+.model SW_NORM_OPEN   VSWITCH(Ron=0.02 Roff=1e8 Von=3.2 Voff=2.8)
+
+* -----------------------------------------------------------------
+* 3. FRONT-END TUNING & INPUT PROTECTION
+* -----------------------------------------------------------------
+* Parallel tuning capacitor: Ctune = 690 nF for 2.2 kHz resonance with 7.5 mH
+C_tune in_p in_n 690n
+R_damp in_p in_n 2.2k
+
+* Antiparallel Schottky protection diodes (clamp transients to +-0.3V)
+D_prot1 in_p in_n D_SCHOTTKY
+D_prot2 in_n in_p D_SCHOTTKY
+.model D_SCHOTTKY D(Is=1e-7 Rs=1 N=1.05 Cjo=10p BV=30)
+
+* Series RF suppression resistors and common-mode filtering
+R_in_p in_p amp_in_p 49.9
+R_in_n in_n amp_in_n 49.9
+C_cm_p amp_in_p 0 10n
+C_cm_n amp_in_n 0 10n
+
+* High-impedance DC bias return paths
+R_bias_p amp_in_p 0 1Meg
+R_bias_n amp_in_n 0 1Meg
+
+* -----------------------------------------------------------------
+* 4. LOW-NOISE INSTRUMENTATION AMPLIFIER (STAGE 1)
+* -----------------------------------------------------------------
+* Gain = 50 V/V (INA828 style: G = 1 + 49.4k/Rg, Rg = 1.01k; or AD8428 G=2000)
+* Differential gain = 50, perfect CMRR
+E_ina ina_out 0 amp_in_p amp_in_n 50
+
+* -----------------------------------------------------------------
+* 5. ACTIVE BANDPASS FILTER & MID-STAGE GAIN (STAGE 2 & 3)
+* -----------------------------------------------------------------
+* Op-amp active bandpass filter (Multiple Feedback MFB, Q ~ 6, f0 = 2.2 kHz, Gain ~ 20)
+* Inverting MFB topology:
+R_bp1 ina_out bp_node1 15k
+R_bp2 bp_node1 0 1.2k
+C_bp1 bp_node1 bp_in_inv 10n
+C_bp2 bp_node1 bp_out 10n
+R_bp3 bp_in_inv bp_out 68k
+
+* High gain op-amp model
+E_op1 bp_out 0 0 bp_in_inv 100000
+
+* -----------------------------------------------------------------
+* 6. FINAL GAIN & COMPARATOR / ADC BUFFER (STAGE 4)
+* -----------------------------------------------------------------
+* Additional gain stage (Inverting Gain = -10 V/V)
+R_g1 bp_out gain_in_inv 1k
+R_g2 gain_in_inv final_out 10k
+C_g2 gain_in_inv final_out 100p
+E_op2 final_out 0 0 gain_in_inv 100000
+
+* Fast comparator for zero-crossing detection (square wave output 0 to 3.3V)
+* Zero-crossing with 5 mV hysteresis
+B_comp comp_out 0 V=IF(V(final_out) > 0.005, 3.3, IF(V(final_out) < -0.005, 0, 1.65))
+R_load comp_out 0 100k
+
+* -----------------------------------------------------------------
+* SIMULATION COMMANDS
+* -----------------------------------------------------------------
+.tran 0 20m 0 1u
+
+.meas TRAN V_AMP_PEAK MAX V(final_out)
+.meas TRAN V_INA_PEAK MAX V(ina_out)
+
+.end
