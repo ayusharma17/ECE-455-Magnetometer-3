@@ -12,7 +12,7 @@ This repository contains the hardware designs, LTspice simulations, and microcon
 | **[RELAY.md](RELAY.md)** | Circuit diagram, pinout table, microcontroller driver circuit, and cold-switching break-before-make sequence for the OMRON G6A-2 DPDT relay. |
 | **[DESIGN.md](DESIGN.md)** | System overview, microcontroller timing budgets, measurement resolution targets, and reference literature citations. |
 | **[TESTING.md](TESTING.md)** | Step-by-step bench testing instructions and safety verification procedures for the hardware. |
-| **[LTSpice/](LTSpice/)** | LTspice graphical schematics (`.asc`), netlists (`.cir`), and waveform plots for simulating the polarization circuit. |
+| **[LTSpice/](LTSpice/)** | LTspice simulations for both the **Polarization circuit** (`LTSpice/pyppm_12v_ltspice_starter (1)/`) and the **DPDT Relay cold-switching circuit** (`LTSpice/relay_circuit/`). |
 | **[firmware/](firmware/)** | Arduino firmware (`ProtonMagnetometer.ino`) controlling the polarization pulse and relay switching sequence. |
 | **[simulation/](simulation/)** | Python demo script (`proton_precession_demo.py`) demonstrating signal acquisition and frequency estimation. |
 
@@ -33,10 +33,13 @@ This repository contains the hardware designs, LTspice simulations, and microcon
 ## How to Run & Use
 
 ### 1. View or Run LTspice Simulations
-- **Graphical Schematic**: Open `LTSpice/pyppm_12v_ltspice_starter (1)/pyppm_12v_polarizer_graphical.asc` directly in LTspice.
-- **Run from Terminal (macOS)**:
+- **Polarization Circuit**: Run batch simulation via Terminal (macOS):
   ```bash
   /Applications/LTspice.app/Contents/MacOS/LTspice -b "LTSpice/pyppm_12v_ltspice_starter (1)/pyppm_12v_polarizer.cir"
+  ```
+- **Relay & Cold-Switching Circuit**: Run batch simulation via Terminal (macOS):
+  ```bash
+  /Applications/LTspice.app/Contents/MacOS/LTspice -b "/Users/ayushsharma/Documents/ChatGPT/Proton_Magnetometer_ECE_455/LTSpice/relay_circuit/relay_circuit.cir"
   ```
 
 ### 2. Upload Firmware

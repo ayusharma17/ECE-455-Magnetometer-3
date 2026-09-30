@@ -1,0 +1,105 @@
+* DPDT Relay and Cold-Switching Simulation for Proton Magnetometer
+* Models Arduino control, low-side relay driver, flyback protection,
+* break-before-make DPDT contact transfer, and polarization/quench.
+.options abstol=1e-12 reltol=1e-4 chgtol=1e-15
+
+* ==============================================================================
+* 1. 12V POLARIZATION SUPPLY & REVERSE PROTECTION
+* ==============================================================================
+VBAT vbat_raw 0 12.0
+D07 vbat_raw vbus DPOWER
+.model DPOWER D(Is=10n Rs=0.05 N=1.5 BV=100 IBV=10u)
+C56 vbus 0 10u
+C57 vbus 0 100n
+R_bus_link vbus ccs_plus 0.01
+
+* ==============================================================================
+* 2. TVS QUENCH CLAMP & DAMPING
+* ==============================================================================
+R32 ccs_plus ccs_minus 1k
+DTVS1 0 ccs_minus TVS45A
+.model TVS45A D(Is=1n Rs=0.55 N=1 BV=50 IBV=1m Cjo=2n)
+
+* ==============================================================================
+* 3. MAIN POLARIZATION POWER MOSFET SWITCH
+* ==============================================================================
+M01 ccs_minus pol_gate 0 0 QSIM
+.model QSIM NMOS(VTO=2 KP=5 LAMBDA=0.01 RD=5m RS=5m)
+R31 pol_driver_out pol_gate 33.2
+R_gate_pd pol_gate 0 47k
+
+* Arduino POL_EN pulse: HIGH from 2 ms to 12 ms (10 ms polarization pulse)
+V_POL_EN pol_driver_out 0 PULSE(0 5 2m 50n 50n 10m 50m)
+
+* ==============================================================================
+* 4. ARDUINO RELAY CONTROLLER & DRIVER STAGE
+* ==============================================================================
+* Arduino RELAY_EN GPIO pin: HIGH from 1 ms to 14 ms (energizes relay before polarization)
+V_RELAY_MCU mcu_relay_pin 0 PWL(0 0 1m 0 1.05m 5 14m 5 14.05m 0 50m 0)
+
+* Gate driver network for relay MOSFET
+R_REL_GATE mcu_relay_pin rel_gate 100
+R_REL_PD rel_gate 0 47k
+
+* Low-side N-channel MOSFET for relay coil (2N7002 / FDN327N)
+M_RELAY rel_coil_neg rel_gate 0 0 Q_REL_MOS
+.model Q_REL_MOS NMOS(VTO=1.5 KP=0.5 RD=0.5 RS=0.5)
+
+* 5V Relay Supply Rail
+V_REL_VCC v_rel_vcc 0 5.0
+
+* OMRON G6A-2 Relay Coil: 125 Ohm DC resistance, ~50 mH inductance
+R_COIL_RELAY v_rel_vcc rel_coil_mid 125
+L_COIL_RELAY rel_coil_mid rel_coil_neg 50m
+
+* Flyback Diode across Relay Coil (1N4148 / SD101A)
+D_REL_FLY rel_coil_neg v_rel_vcc D_FLY
+.model D_FLY D(Is=1e-9 Rs=0.5 BV=100 IBV=10u)
+
+* ==============================================================================
+* 5. DPDT RELAY CONTACTS (BREAK-BEFORE-MAKE)
+* Actuated by the differential voltage across the relay coil (v_rel_vcc - rel_coil_neg)
+* ==============================================================================
+E_COIL_SENSE v_actuate 0 v_rel_vcc rel_coil_neg 1.0
+
+* Normally Open contacts (connect coil to Polarization terminals when energized)
+S_rel_no1 ccs_plus coil_pos v_actuate 0 SW_NO
+S_rel_no2 coil_neg ccs_minus v_actuate 0 SW_NO
+
+* Normally Closed contacts (connect coil to Readout terminals when de-energized)
+S_rel_nc1 readout_pos coil_pos 0 v_actuate SW_NC
+S_rel_nc2 readout_neg coil_neg 0 v_actuate SW_NC
+
+* Break-before-make:
+* NO closes when coil voltage > 3.0 V (off < 2.6 V)
+* NC closes when coil voltage < 2.0 V (off > 2.4 V)
+* Between 2.0 V and 2.6 V, BOTH contacts are open (break-before-make gap)
+.model SW_NO VSWITCH(Ron=0.02 Roff=1e8 Von=3.0 Voff=2.6)
+.model SW_NC VSWITCH(Ron=0.02 Roff=1e8 Von=-2.0 Voff=-2.4)
+
+* ==============================================================================
+* 6. SENSOR COIL (7.5 mH, 5.5 Ohm)
+* ==============================================================================
+LCOIL coil_pos coil_int 7.5m
+RCOIL coil_int coil_mid 5.5
+
+* Induced Proton Precession FID signal (10 uV, 2214 Hz) starting after release into Earth field
+B_FID coil_mid coil_neg V=10u*exp(-(time-12m)/0.2)*sin(2*3.14159265*2214*(time-12m))*(time > 12m)
+
+* ==============================================================================
+* 7. READOUT TERMINALS (PASSIVE LOAD / OUTPUT PORT)
+* ==============================================================================
+R_TERM1 readout_pos 0 1Meg
+R_TERM2 readout_neg 0 1Meg
+C_TEST_TUNE readout_pos readout_neg 690n
+
+* ==============================================================================
+* 8. TRANSIENT ANALYSIS & MEASUREMENTS
+* ==============================================================================
+.tran 0 25m 0 1u
+
+.meas TRAN I_COIL_PEAK MAX I(LCOIL)
+.meas TRAN V_DRAIN_MAX MAX V(ccs_minus)
+.meas TRAN T_QUENCH TRIG I(LCOIL) VAL=1 FALL=1 TARG I(LCOIL) VAL=0.01 FALL=1
+.meas TRAN V_READOUT_PEAK MAX V(readout_pos,readout_neg) FROM 15m TO 25m
+.end
