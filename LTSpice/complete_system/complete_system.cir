@@ -24,7 +24,8 @@ R_gate_pd gate 0 47k
 V_POL_EN driver_out 0 PULSE(0 5 2m 50n 50n 10m 50m)
 
 * 4. DPDT Relay Model (Break-Before-Make)
-* RELAY_EN: 0V (t < 1ms), 5V (1ms to 14ms: Polarization), 0V (t > 14ms: Preamp)
+* RELAY_EN ramps 0->5V from 1.0-1.2ms and 5->0V from 14.0-14.2ms.
+* POL_EN polarizes from 2ms to 12ms; the relay remains energized through quench.
 V_RELAY_EN v_rel_coil 0 PWL(0 0 1m 0 1.2m 5 14m 5 14.2m 0 50m 0)
 
 * Normally Open contacts (to Polarization)
@@ -63,7 +64,8 @@ C_CM1 ina_in_p v_cm_node 10n
 C_CM2 ina_in_n v_cm_node 10n
 
 * Common-mode noise generator: 100 mV 60 Hz + 10 mV 10 kHz
-V_CM_60Hz v_cm_node 0 SIN(0 0.1 60 0 0)
+V_CM_60Hz v_cm_node cm_ripple SIN(0 0.1 60 0 0)
+V_RIPPLE cm_ripple 0 SIN(0 0.01 10k 0 0)
 
 * Bias Return Resistors
 R_BIAS1 ina_in_p v_cm_node 1Meg

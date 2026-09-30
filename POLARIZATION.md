@@ -93,7 +93,7 @@ The selected TVS (SMDJ45A) has a peak pulse power rating of $3000\text{ W}$ ($10
 ### 3. MOSFET and TVS Voltage Rating Margin
 * **PyPPM Reference Choice**: PyPPM Sheet 12 pairs an `IRLR024N` ($V_{DSS} = 55\text{ V}$) with an `SMDJ45A` ($V_{BR} = 50.0\text{–}55.3\text{ V}$).
 * **Margin Assessment**: At $2.2\text{ A}$, clamping voltage reaches $\approx 51.4\text{ V}$, leaving only $\approx 3.6\text{ V}$ (6.5%) margin below $V_{DSS} = 55\text{ V}$. Any inductive spike or temperature shift could push the MOSFET into uncontrolled avalanche breakdown.
-* **Recommended Upgrade**: Use an 80 V to 100 V N-channel MOSFET (such as BSC0902NS, FDD8447L, or IRF540N) to provide $>50\%$ voltage safety headroom above the 51.4 V TVS clamp. Alternatively, if a 55 V MOSFET is used, select a 36 V TVS (SMBJ36A, $V_{BR} \approx 40\text{ V}$, $V_{clamp} \approx 43\text{ V}$ at 2.2 A, as in ECE 455 past projects) so clamping occurs safely below 55 V.
+* **Future review**: The 55 V IRLR024N / SMDJ45A pairing follows PyPPM. A simplified LTspice comparison with a 100 V IRL540N proxy showed essentially unchanged current and quench behavior, with more nominal voltage headroom. Revisit the MOSFET choice after checking manufacturer SPICE models and measuring the drain waveform; the current simulation does not model device and wiring tolerances.
 
 ### 4. Relay Selection and Contact Ratings
 * **OMRON G6A-2**: Rated for 2 A continuous carry current and 2 A switching at 30 VDC. At $I_0 \approx 2.2\text{ A}$, it is slightly above continuous DC rating, but because polarization is pulsed (20% duty cycle) and strictly *cold-switched* (contacts open/close with zero current), contacts will not arc or degrade.
@@ -108,4 +108,3 @@ The selected TVS (SMDJ45A) has a peak pulse power rating of $3000\text{ W}$ ($10
 * [JPM-4 Polarization Quench Turn-Off, p. 6](https://sensors.myu-group.co.jp/sm_pdf/SM2789.pdf)
 * [Sri Lanka PPM Polarization Timing and Relay Control, p. 4](https://ipsl.lk/documents/TechSession/2008/ipsl0812.pdf)
 * [ECE 455 Past Projects: Switching and Input Protection, p. 13–14](file:///Users/ayushsharma/Documents/ChatGPT/Proton_Magnetometer_ECE_455/PastProjects/ECE455_Final_Slides%20(1).pdf)
-
