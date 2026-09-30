@@ -1,0 +1,7 @@
+PastProjects/
+*.raw
+*.log
+*.op.raw
+.DS_Store
+*/.DS_Store
+.chart-data-*/
